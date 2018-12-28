@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-import assemble
+# import assemble
 import disassemble
 import sutil
 
@@ -95,7 +95,8 @@ output.add_argument(
 arg_list = parser.parse_args()
 
 if arg_list.assemble:
-	process = assemble.process_query
+	raise NotImplementedError("Assembler is not yet implemented")
+	# process = assemble.process_query
 elif arg_list.disassemble:
 	process = disassemble.process_query
 else:
