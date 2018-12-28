@@ -1,8 +1,28 @@
 import sutil
+import asmlexer
+import asmparser
 
 
 def assemble_code(code: str) -> list:  # returns a "list" of protos
-	pass
+	source: asmlexer.SourceCode = asmlexer.SourceCode()
+	lexer: asmlexer.AsmLexer = asmlexer.AsmLexer()
+	collapser: asmlexer.AsmLexCollapser = asmlexer.AsmLexCollapser()
+	parser: asmparser.AsmParser = asmparser.AsmParser()
+
+	source.set_source(code)
+	lexer.set_source(source)
+	collapser.set_source(source)
+	parser.set_source(source)
+
+	lexer.simple_lex()
+
+	collapser.set_tokens(lexer.output)
+	collapser.collapse_lex()
+
+	parser.set_tokens(collapser.output)
+	parser.parse_protos()
+
+	return parser.protos
 
 
 def finish_write(output, funcs: list):
@@ -14,7 +34,7 @@ def process_query(output, args):
 	funcs: list = []  # pile up funcs for final assembling
 
 	for name in args.files:
-		with open(name, 'r', sutil.ASCII_ISO) as file:
+		with open(name, 'r', encoding=sutil.ASCII_ISO) as file:
 			asm: str = file.read()
 			timer.restart()
 

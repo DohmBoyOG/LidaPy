@@ -1,4 +1,5 @@
 import struct
+
 import sutil
 
 
@@ -6,10 +7,10 @@ class OpMode:
 	def __init__(
 			self,
 			name: str,
-			a: str="OpArgN",
-			b: str="OpArgN",
-			c: str="OpArgN",
-			o: str="iABC",
+			a: str = "OpArgN",
+			b: str = "OpArgN",
+			c: str = "OpArgN",
+			o: str = "iABC",
 			cb=None):
 		self.name: str = name
 		self.a: str = a  # Modes
@@ -44,6 +45,48 @@ POS_Ax = POS_A
 
 MAXARG_Bx = ((1 << SIZE_Bx) - 1)
 MAXARG_sBx = MAXARG_Bx >> 1
+
+
+class LuaPacker:
+	def __init__(self):
+		self.endian: int = 0
+		self.integral: int = 0
+		self.fmt_int: struct.Struct = None
+		self.fmt_size_t: struct.Struct = None
+		self.fmt_Instruction: struct.Struct = None
+		self.fmt_lua_Number: struct.Struct = None
+		self.fmt_lua_Integer: struct.Struct = None
+
+		self.sz_int: int = 0
+		self.sz_size_t: int = 0
+		self.sz_Instruction: int = 0
+		self.sz_lua_Number: int = 0
+		self.sz_lua_Integer: int = 0
+
+	def get_reader(self, integral: bool, signed: bool, size: int) -> struct.Struct:
+		fmt: str = ''
+
+		if self.endian != 0:  # is little?
+			fmt += '<'
+		else:
+			fmt += '>'
+
+		if size == 4:
+			fmt += 'i' if integral else 'f'
+		elif size == 8:
+			fmt += 'q' if integral else 'd'
+
+		if not signed:
+			fmt = fmt.upper()
+
+		return struct.Struct(fmt)
+
+	def format(self):
+		self.fmt_int = self.get_reader(True, True, self.sz_int)
+		self.fmt_size_t = self.get_reader(True, False, self.sz_size_t)
+		self.fmt_Instruction = self.get_reader(True, False, self.sz_Instruction)
+		self.fmt_lua_Number = self.get_reader(self.integral != 0, True, self.sz_lua_Number)
+		self.fmt_lua_Integer = self.get_reader(True, True, self.sz_lua_Integer)
 
 
 class Instruction:
@@ -114,7 +157,7 @@ class Instruction:
 class TValue:
 	def __init__(self):
 		self.uid: str = None
-		self.tt: int = 0
+		self.tt: int = LuaKTypes.TNIL
 		self.vbool: bool = False
 		self.vflt: float = 0.0
 		self.vint: int = 0
@@ -182,6 +225,9 @@ class Proto:
 		self.source: str = None
 		self.linedefined: int = 0
 		self.lastlinedefined: int = 0
+		self.sizek: int = 0
+		self.sizecode: int = 0
+		self.sizep: int = 0
 		self.k: list = []
 		self.code: list = []
 		self.p: list = []
@@ -189,12 +235,28 @@ class Proto:
 		self.locvars: list = []
 		self.upvalues: list = []
 
+	def get_k(self, idx: int):
+		if idx < self.sizek:
+			result = self.k[idx]
+		else:
+			result = TValue()
+
+		return result
+
+	def get_p(self, idx: int):
+		if idx < self.sizep:
+			result = self.p[idx]
+		else:
+			result = {"uid": "Fake"}
+
+		return result
+
 	@staticmethod
 	def get_fmt():
 		return "Func"
 
 
-class LFunction:
+class LFuncRead:
 	def __init__(self, bt: bytes):
 		# Loading
 		self.pos: int = 0
@@ -204,13 +266,7 @@ class LFunction:
 		# Header
 		self.version: int = 0
 		self.format: int = 0
-		self.endian: int = 0
-		self.int: int = 0
-		self.size_t: int = 0
-		self.Instruction: int = 0
-		self.lua_Number: int = 0
-		self.lua_Integer: int = 0
-		self.integral: int = 0
+		self.rw: LuaPacker = LuaPacker()
 
 		# Readers
 		self.read_int = None
@@ -219,42 +275,31 @@ class LFunction:
 		self.read_lua_Number = None
 		self.read_lua_Integer = None
 
-	def a_reader(self, size: int, fmt: str):
-		res = struct.unpack_from(fmt, self.bytecode, self.pos)
-		self.pos += size
+	def a_reader(self, comp: struct.Struct):
+		res = comp.unpack_from(self.bytecode, self.pos)
+		self.pos += comp.size
 		return res[0]
 
-	def q_reader(self, integral: bool, signed: bool, size: int):
-		little: bool = self.endian != 0
-		fmt: str = ''
-
-		if little:
-			fmt += '<'
-		else:
-			fmt += '>'
-
-		if size == 4:
-			fmt += 'i' if integral else 'f'
-		elif size == 8:
-			fmt += 'q' if integral else 'd'
-
-		if not signed:
-			fmt = fmt.upper()
-
-		return lambda: self.a_reader(size, fmt)
+	def q_reader(self, comp: struct.Struct):
+		return lambda: self.a_reader(comp)
 
 	def read_byte(self) -> int:
-		return self.a_reader(1, 'B')
+		res = struct.unpack_from('B', self.bytecode, self.pos)
+		self.pos += 1
+		return res[0]
 
 	def read_string(self, ln: int) -> str:
-		return self.a_reader(ln, str(ln) + 's').decode(sutil.ASCII_ISO)
+		res = struct.unpack_from(str(ln) + 's', self.bytecode, self.pos)
+		self.pos += ln
+		return res[0].decode(sutil.ASCII_ISO)
 
 	def set_readers(self):
-		self.read_int = self.q_reader(True, True, self.int)
-		self.read_size_t = self.q_reader(True, False, self.size_t)
-		self.read_Instruction = self.q_reader(True, False, self.Instruction)
-		self.read_lua_Number = self.q_reader(self.integral != 0, True, self.lua_Number)
-		self.read_lua_Integer = self.q_reader(True, True, self.lua_Integer)
+		self.rw.format()
+		self.read_int = self.q_reader(self.rw.fmt_int)
+		self.read_size_t = self.q_reader(self.rw.fmt_size_t)
+		self.read_Instruction = self.q_reader(self.rw.fmt_Instruction)
+		self.read_lua_Number = self.q_reader(self.rw.fmt_lua_Number)
+		self.read_lua_Integer = self.q_reader(self.rw.fmt_lua_Integer)
 
 	def read_header(self):
 		raise NotImplementedError()
@@ -263,11 +308,15 @@ class LFunction:
 		raise NotImplementedError()
 
 	def read_function(self):
-		self.pos: int = 0
-		self.proto: Proto = None
+		self.pos = 0
 		self.read_header()
 		self.set_readers()
+		self.proto = None
 		self.proto = self.read_proto()
 
 	def set_target(self, bt: bytes):
 		self.__init__(bt)
+
+
+class LFuncWrite:
+	pass  # TODO: Func write to buffer

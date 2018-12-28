@@ -39,11 +39,12 @@ def easy_resolve_jmp(b: int, pc: int, lmtx: dict):
 
 
 def smart_resolve_jmp(cl: list, b: int, pc: int, lmtx: dict):
+	sizecode: int = len(cl)
 	land: int = b + pc + 1
 	muted: dict = {}
 	looped: bool = True
 
-	while looped:  # keep following JMPs until we hit a collision
+	while looped and 0 < land < sizecode:  # keep following JMPs until we hit a collision
 		target: Instruction = cl[land]
 
 		if target.data.name == "JMP":
@@ -93,20 +94,20 @@ class CodeBuffer:
 
 	def write_not_zero(self, t: str, n: int):
 		if n != 0:
-			self.write_line(f"{t} {n}")
+			self.write_line(f"{t} 0x{n:X}")
 
-	def write_header(self, dis: LFunction):
+	def write_header(self, dis: LFuncRead):
 		self.write_line('.header')
 		self.f_indent()
 		self.write_not_zero("version", dis.version)
 		self.write_not_zero("format", dis.format)
-		self.write_not_zero("endian", dis.endian)
-		self.write_not_zero("int", dis.int)
-		self.write_not_zero("size_t", dis.size_t)
-		self.write_not_zero("Instruction", dis.Instruction)
-		self.write_not_zero("lua_Number", dis.lua_Number)
-		self.write_not_zero("lua_Integer", dis.lua_Integer)
-		self.write_not_zero("integral", dis.integral)
+		self.write_not_zero("endian", dis.rw.endian)
+		self.write_not_zero("int", dis.rw.sz_int)
+		self.write_not_zero("size_t", dis.rw.sz_size_t)
+		self.write_not_zero("Instruction", dis.rw.sz_Instruction)
+		self.write_not_zero("lua_Number", dis.rw.sz_lua_Number)
+		self.write_not_zero("lua_Integer", dis.rw.sz_lua_Integer)
+		self.write_not_zero("integral", dis.rw.integral)
 		self.new_line()
 		self.b_indent()
 
@@ -148,7 +149,7 @@ class ProtoPrint:
 		return samp
 
 	def extract_k(self, k: int, p: Proto) -> str:
-		ik = p.k[k]
+		ik = p.get_k(k)
 
 		if self.flags.inl_consts:
 			result = ik.get_fmt()
@@ -193,7 +194,7 @@ class ProtoPrint:
 		if mode == "OpArgK":
 			result = self.extract_k(val, p)
 		elif mode == "OpArgP":
-			result = p.p[val].uid
+			result = p.get_p(val).uid
 		else:
 			raise NotImplementedError(mode)
 
@@ -206,11 +207,10 @@ class ProtoPrint:
 	def extract_codesegment(self, p: Proto) -> list:
 		labels_mtx: dict = {}
 		pcode: list = p.code
-		codelen: int = len(pcode)
-		codelist: list = [None] * codelen
+		codelist: list = [None] * p.sizecode
 		smartj: bool = self.flags.jmp_optimize
 
-		for pc in range(codelen):
+		for pc in range(p.sizecode):
 			i: Instruction = pcode[pc]
 			mds: OpMode = i.data
 			arg_a: str = None
@@ -248,7 +248,7 @@ class ProtoPrint:
 			codelist[pc] = CodeDesc(mds, args)
 
 		for x in sorted(labels_mtx.keys()):
-			if x < codelen:
+			if 0 < x < p.sizecode:
 				name: str = self.get_name_d('j', 'Label')
 				cddesc: CodeDesc = codelist[x]
 				pclist: list = labels_mtx[x]
@@ -332,8 +332,8 @@ class ProtoPrint:
 				refs.append({"lid": namelen - len(uid), "sname": sname, "uid": uid})
 
 			for ref in refs:
-				fillid = ref['uid'] + ' ' * ref['lid']
-				self.c.write_line(f"{fillid}{ref['sname']}")
+				fillid = ' ' * ref['lid']
+				self.c.write_line(f"{ref['uid']}{fillid}{ref['sname']}")
 
 			self.c.end_swrite()
 
@@ -351,7 +351,7 @@ class ProtoPrint:
 		self.get_seg_uids('p', p.p)
 
 		if p.uid:
-			self.c.write_line(".function " + p.uid)
+			self.c.write_line(f".function \"{p.uid}\"")
 		else:
 			self.c.write_line(".function")
 
@@ -368,7 +368,7 @@ class ProtoPrint:
 		self.c.write_line(".end")
 		self.c.new_line()
 
-	def get_assembly(self, dis: LFunction):
+	def get_assembly(self, dis: LFuncRead):
 		self.c.write_header(dis)
 		self.write_proto(dis.proto)
 		return self.c.to_string()

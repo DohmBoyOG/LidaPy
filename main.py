@@ -96,7 +96,6 @@ arg_list = parser.parse_args()
 
 if arg_list.assemble:
 	process = assemble.process_query
-	raise NotImplementedError("Not yet implemented")
 elif arg_list.disassemble:
 	process = disassemble.process_query
 else:

@@ -151,16 +151,16 @@ LUA51_OPMODE = [
 ]
 
 
-class L51Function(LFunction):
+class L51FuncRead(LFuncRead):
 	def read_header(self):
 		self.version = 0x51
 		self.format = self.read_byte()
-		self.endian = self.read_byte()
-		self.int = self.read_byte()
-		self.size_t = self.read_byte()
-		self.Instruction = self.read_byte()
-		self.lua_Number = self.read_byte()
-		self.integral = self.read_byte()
+		self.rw.endian = self.read_byte()
+		self.rw.sz_int = self.read_byte()
+		self.rw.sz_size_t = self.read_byte()
+		self.rw.sz_Instruction = self.read_byte()
+		self.rw.sz_lua_Number = self.read_byte()
+		self.rw.integral = self.read_byte()
 
 	def read_lstring(self) -> str:
 		size = self.read_size_t()
@@ -271,6 +271,11 @@ class L51Function(LFunction):
 		p.code = self.read_code()
 		p.k = self.read_consts()
 		p.p = self.read_protos()
+
+		p.sizecode = len(p.code)
+		p.sizek = len(p.k)
+		p.sizep = len(p.p)
+
 		p.lineinfo = self.read_lineinfo()
 		p.locvars = self.read_locals()
 		p.upvalues = self.read_upvalues()

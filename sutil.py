@@ -1,5 +1,6 @@
 import functools
 import re
+import string
 import time
 
 ASCII_ISO = 'iso-8859-1'
@@ -22,6 +23,9 @@ class LightTimer:
 
 @functools.lru_cache(maxsize=None)
 def get_safe(val: str) -> str:
+	if val is None:
+		val = ''
+
 	res = val.encode('unicode-escape').replace(b"\"", b"\\\"")
 	return f'"{res.decode(ASCII_ISO)}"'
 
@@ -42,6 +46,10 @@ def get_norm(val: str) -> str:
 		return "Unknown"
 	else:
 		return final[:0x10]
+
+
+def is_hex_str(what: str) -> bool:
+	return all(c in string.hexdigits for c in what)
 
 
 def sizeof_fmt(num, suffix='B'):  # https://stackoverflow.com/a/1094933/9419412

@@ -17,9 +17,12 @@ def match_bytes(bytecode: bytes, test: str) -> bool:
 	return ok
 
 
-def get_proto(bytecode: bytes) -> extractor.LFunction:
+def get_proto(bytecode: bytes) -> extractor.LFuncRead:
+	if not match_bytes(bytecode, "\x1BLua"):
+		raise RuntimeError("File is not Lua bytecode")
+
 	if match_bytes(bytecode, "\x1BLua\x51"):
-		result = lua51.L51Function(bytecode[5:])
+		result = lua51.L51FuncRead(bytecode[5:])
 	else:
 		raise NotImplementedError("Lua version not supported")
 
@@ -28,7 +31,7 @@ def get_proto(bytecode: bytes) -> extractor.LFunction:
 
 def disassemble_bytecode(bytecode: bytes, args) -> str:
 	pp: extractor.ProtoPrint = extractor.ProtoPrint()
-	lf: extractor.LFunction = get_proto(bytecode)
+	lf: extractor.LFuncRead = get_proto(bytecode)
 
 	pp.flags.has_comments = args.comments
 	pp.flags.has_lineinfo = not args.nolines
